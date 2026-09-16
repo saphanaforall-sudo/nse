@@ -1,0 +1,4 @@
+jugaad-data>=0.28
+pandas>=2.0
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
