@@ -1,0 +1,37 @@
+name: nse-bhavcopy-daily
+
+on:
+  schedule:
+    - cron: '30 13 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Optional: DD-MM-YYYY to (re)load a specific date'
+        required: false
+      backfill_days:
+        description: 'Optional: number of past calendar days to backfill'
+        required: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run loader
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+        run: |
+          if [ -n "${{ github.event.inputs.backfill_days }}" ]; then
+            python load_bhavcopy.py --backfill-days ${{ github.event.inputs.backfill_days }}
+          elif [ -n "${{ github.event.inputs.date }}" ]; then
+            python load_bhavcopy.py --date "${{ github.event.inputs.date }}"
+          else
+            python load_bhavcopy.py
+          fi
