@@ -71,9 +71,14 @@ def ensure_schema(engine):
 
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """NSE's CSV headers have stray spaces and inconsistent casing — normalize them."""
+    """NSE's CSV headers have stray spaces/casing, and NSE has changed header
+    naming conventions over time (old sec_bhavdata_full vs newer UDiFF-style).
+    Map whichever set of names shows up to a stable canonical schema."""
     df.columns = [c.strip().upper().replace(" ", "_") for c in df.columns]
+    log.info("Raw columns received: %s", list(df.columns))
+
     rename_map = {
+        # --- old sec_bhavdata_full naming ---
         "SYMBOL": "symbol",
         "SERIES": "series",
         "DATE1": "trade_date",
@@ -90,6 +95,21 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "NO_OF_TRADES": "no_of_trades",
         "DELIV_QTY": "deliv_qty",
         "DELIV_PER": "deliv_per",
+        # --- newer UDiFF-style naming ---
+        "TCKRSYMB": "symbol",
+        "SCTYSRS": "series",
+        "TRADDT": "trade_date",
+        "PRVSCLSGPRIC": "prev_close",
+        "OPNPRIC": "open_price",
+        "HGHPRIC": "high_price",
+        "LWPRIC": "low_price",
+        "LASTPRIC": "last_price",
+        "CLSPRIC": "close_price",
+        "TTLTRADGVOL": "ttl_trd_qnty",
+        "TTLTRFVAL": "turnover_lacs",
+        "TTLNBOFTXSEXCTD": "no_of_trades",
+        "DELIVQTY": "deliv_qty",
+        "DELIVPER": "deliv_per",
     }
     df = df.rename(columns=rename_map)
     keep_cols = [c for c in rename_map.values() if c in df.columns]
@@ -102,6 +122,17 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         df["symbol"] = df["symbol"].astype(str).str.strip()
     if "series" in df.columns:
         df["series"] = df["series"].astype(str).str.strip()
+
+    required = {"symbol", "series", "trade_date"}
+    if not required.issubset(df.columns):
+        missing = required - set(df.columns)
+        raise RuntimeError(
+            f"Could not find required columns {missing} after mapping. "
+            f"Columns present after mapping: {list(df.columns)}. "
+            "NSE likely changed header names again — update rename_map in "
+            "normalize_columns() with the new names shown in the 'Raw columns "
+            "received' log line above."
+        )
 
     if "trade_date" in df.columns:
         df["trade_date"] = pd.to_datetime(
