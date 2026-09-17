@@ -215,12 +215,28 @@ def upsert(engine, df: pd.DataFrame):
 
 def run_for_date(engine, target_date: date):
     log.info("=== Processing %s ===", target_date)
+    if target_date > date.today():
+        log.error(
+            "Refusing to process %s: it's in the future. "
+            "Check the --date input format — it must be DD-MM-YYYY, not MM-DD-YYYY.",
+            target_date,
+        )
+        return
     try:
         raw = download_bhavcopy(target_date)
     except RuntimeError as exc:
         log.error("Skipping %s: %s (likely a holiday/weekend or NSE outage).", target_date, exc)
         return
     cleaned = normalize_columns(raw)
+
+    bad_dates = cleaned.loc[cleaned["trade_date"] > date.today(), "trade_date"].unique()
+    if len(bad_dates) > 0:
+        raise RuntimeError(
+            f"File for {target_date} contains future trade_date value(s) {list(bad_dates)} "
+            "after parsing — this points to a date-format mismatch, not real data. Aborting "
+            "this load rather than inserting bad rows."
+        )
+
     upsert(engine, cleaned)
 
 
