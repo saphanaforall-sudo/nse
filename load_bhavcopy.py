@@ -77,6 +77,22 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [c.strip().upper().replace(" ", "_") for c in df.columns]
     log.info("Raw columns received: %s", list(df.columns))
 
+    # Newer NSE files bundle equities + futures + options + currency derivatives
+    # into one unified CSV. Derivative rows carry an expiry date and/or strike
+    # price/option type; plain cash-equity rows never do. Use that to filter
+    # down to equity rows only, before the column rename/selection below.
+    derivative_markers = [c for c in ("XPRYDT", "STRKPRIC", "OPTNTP") if c in df.columns]
+    if derivative_markers:
+        before = len(df)
+        mask = pd.Series(True, index=df.index)
+        for col in derivative_markers:
+            mask &= df[col].isna() | (df[col].astype(str).str.strip() == "")
+        df = df[mask]
+        log.info(
+            "Filtered to cash-equity rows only: %d -> %d rows (dropped derivatives).",
+            before, len(df),
+        )
+
     rename_map = {
         # --- old sec_bhavdata_full naming ---
         "SYMBOL": "symbol",
@@ -112,7 +128,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "DELIVPER": "deliv_per",
     }
     df = df.rename(columns=rename_map)
-    keep_cols = [c for c in rename_map.values() if c in df.columns]
+    keep_cols = list(dict.fromkeys(c for c in rename_map.values() if c in df.columns))
     df = df[keep_cols]
 
     # Drop fully-empty unnamed trailing column NSE sometimes appends
